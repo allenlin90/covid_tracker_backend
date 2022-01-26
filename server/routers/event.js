@@ -75,7 +75,7 @@ router.get('/:id', async (req, res) => {
   res.status(resCode).json(response);
 });
 
-// POST request to create a new task
+// POST request to create a new event
 router.post('/', async (req, res) => {
   let resCode = 200;
   const response = {
@@ -83,9 +83,36 @@ router.post('/', async (req, res) => {
     message: 'success',
     data: null,
   };
-  const event = new Event(req.body);
+
+  const { patient_id } = req.body;
+  const storedEvents = await Event.find({ where: { patient_id } });
+  const timeRanges = storedEvents.map((event) => {
+    const { timeFrom, timeTo } = event;
+    const timeFromObj = new Date(timeFrom).getTime();
+    const timeToObj = new Date(timeTo).getTime();
+    return { to: timeToObj, from: timeFromObj };
+  });
 
   try {
+    // check if time is not in any range
+    const { timeTo, timeFrom } = req.body;
+    const timeToNum = new Date(timeTo).getTime();
+    const timeFromNum = new Date(timeFrom).getTime();
+
+    const isTimeToValid = timeRanges.some(({ to, from }) => {
+      return timeToNum > from && timeToNum < to;
+    });
+    const isTimeFromValid = timeRanges.some(({ to, from }) => {
+      return timeFromNum > from && timeFromNum < to;
+    });
+
+    if (isTimeToValid || isTimeFromValid) {
+      response.status = 400;
+      throw new Error('invalid to or from time');
+    }
+
+    // save to database
+    const event = new Event(req.body);
     await event.save();
     resCode = 201;
     response.data = { event };
